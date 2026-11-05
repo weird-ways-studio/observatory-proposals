@@ -27,9 +27,10 @@ describe("mutation harness", { concurrency: true }, () => {
     ["compile-error", 1, /^INVALID compile-error .*does not typecheck: .*TS2322/m],
     ["runtime-throw", 1, /^INVALID runtime-throw .*failed with TypeError, not an assertion: boom$/m],
     ["module-load", 1, /^INVALID module-load .*: 0 tests named "clamp caps at max" ran in test\/lib\.test\.ts$/m],
-    // B1 retro L3: the spinning test process outlives the SIGKILL of its runner; the harness finds and kills it.
+    // B1 retro L3: a test leaves a process running; the harness finds it in the run's process group and kills it.
     ["orphan", 1, /^INVALID orphan .*: test process\(es\) outlived the run and were killed$/m],
-    ["timeout", 1, /^INVALID timeout .*timeout after 4000 ms; test process\(es\) outlived the run and were killed$/m],
+    // On this node the spinning test dies with its runner; if it ever outlives it, the line says so too.
+    ["timeout", 1, /^INVALID timeout .*timeout after 4000 ms(; test process\(es\) outlived the run and were killed)?$/m],
     ["zero-tests", 1, /^INVALID zero-tests .*baseline: 0 tests named "clamp caps" ran in test\/lib\.test\.ts$/m],
     ["wrong-message", 1, /^INVALID wrong-message .*does not contain "some-other-message"/m],
     ["baseline-fails", 1, /^INVALID baseline-fails .*baseline: designated test fails unmutated \(broken-baseline\)$/m],
