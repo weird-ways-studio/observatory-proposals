@@ -298,6 +298,19 @@
         "file": "test/asyncload.test.ts",
         "name": "target"
       }
+    },
+    {
+      "id": "orphan",
+      "row": "self",
+      "file": "src/lib.ts",
+      "find": "// Fixture for the mutation harness self-tests (test/mutants.test.ts). Not used by the Observatory.\n",
+      "replace": "// Fixture for the mutation harness self-tests (test/mutants.test.ts). Not used by the Observatory.\nimport { spawn } from \"node:child_process\";\nspawn(\"sleep\", [\"300\"], { stdio: \"ignore\" }).unref();\n",
+      "why": "B1 retro L3: the test leaves a process running after it exits; the harness finds it in the run's process group",
+      "test": {
+        "file": "test/lib.test.ts",
+        "name": "clamp caps at max"
+      },
+      "expect": "clamp-cap"
     }
   ],
   "retired": [

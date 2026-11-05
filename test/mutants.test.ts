@@ -27,7 +27,9 @@ describe("mutation harness", { concurrency: true }, () => {
     ["compile-error", 1, /^INVALID compile-error .*does not typecheck: .*TS2322/m],
     ["runtime-throw", 1, /^INVALID runtime-throw .*failed with TypeError, not an assertion: boom$/m],
     ["module-load", 1, /^INVALID module-load .*: 0 tests named "clamp caps at max" ran in test\/lib\.test\.ts$/m],
-    ["timeout", 1, /^INVALID timeout .*timeout after 4000 ms$/m],
+    // B1 retro L3: the spinning test process outlives the SIGKILL of its runner; the harness finds and kills it.
+    ["orphan", 1, /^INVALID orphan .*: test process\(es\) outlived the run and were killed$/m],
+    ["timeout", 1, /^INVALID timeout .*timeout after 4000 ms; test process\(es\) outlived the run and were killed$/m],
     ["zero-tests", 1, /^INVALID zero-tests .*baseline: 0 tests named "clamp caps" ran in test\/lib\.test\.ts$/m],
     ["wrong-message", 1, /^INVALID wrong-message .*does not contain "some-other-message"/m],
     ["baseline-fails", 1, /^INVALID baseline-fails .*baseline: designated test fails unmutated \(broken-baseline\)$/m],
@@ -55,7 +57,7 @@ describe("mutation harness", { concurrency: true }, () => {
 
   test("a whole run fails when any mutant is not caught, and lists retired entries", () => {
     const r = run();
-    assert.match(r.out, /^4\/23 caught; 19 not caught -- run FAILS$/m, r.out);
+    assert.match(r.out, /^4\/24 caught; 20 not caught -- run FAILS$/m, r.out);
     assert.match(r.out, /^RETIRED old: fixture: shows a retired entry is listed$/m, r.out);
     assert.equal(r.code, 1);
   });

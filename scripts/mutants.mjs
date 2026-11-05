@@ -80,6 +80,22 @@ function inside(dir, file) {
 /** Escapes a test name so --test-name-pattern matches it literally. */
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/**
+ * True if any process of the group led by `pid` is still alive. Each test run is started as its own process
+ * group (setsid), so a test process node --test started in a child of its own, which the runner's SIGKILL does
+ * not reach, is still found: 26 such "spin ends" loops held the c-box at full CPU for 8.5 h after B1 (retro
+ * 8722b770 L3). Kills what it finds.
+ */
+export function reap(pid) {
+  try {
+    process.kill(-pid, 0);
+  } catch {
+    return false; // ESRCH: nothing of the group is left
+  }
+  try { process.kill(-pid, "SIGKILL"); } catch { /* went in between */ }
+  return true;
+}
+
 /** Runs one named test alone; returns the finished-test events and exit status, or why the run went wrong. */
 function runTest(dir, test, timeout) {
   // Under a parent test runner node sets NODE_TEST_CONTEXT, and a child run then reports to that parent
@@ -89,10 +105,15 @@ function runTest(dir, test, timeout) {
   const out = join(dir, ".mutants-events.jsonl");
   rmSync(out, { force: true });
   const args = [`--test-reporter=${REPORTER}`, `--test-reporter-destination=${out}`, `--test-name-pattern=^${escape(test.name)}$`, test.file];
-  const r = spawnSync(process.execPath, args, {
+  // setsid (util-linux) makes node the leader of a new process group without forking, so r.pid is the group.
+  const r = spawnSync("setsid", [process.execPath, ...args], {
     cwd: dir, env, encoding: "utf8", timeout, killSignal: "SIGKILL",
   });
-  if (r.error?.code === "ETIMEDOUT") return { why: `timeout after ${timeout} ms` };
+  if (r.error && r.error.code !== "ETIMEDOUT") return { why: `could not start the test run: ${r.error.code}` };
+  // Anything of this run still alive is killed and makes the mutant INVALID, so the whole run fails (L3).
+  const orphans = r.pid && reap(r.pid) ? "; test process(es) outlived the run and were killed" : "";
+  if (r.error?.code === "ETIMEDOUT") return { why: `timeout after ${timeout} ms${orphans}` };
+  if (orphans) return { why: orphans.slice(2) };
   if (r.signal) return { why: `killed by ${r.signal}` };
   const events = existsSync(out) ? readFileSync(out, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
   return { events, status: r.status };
@@ -154,12 +175,15 @@ export function main(argv) {
   const todo = list.mutants.filter((m) => o.only === undefined || m.id === o.only);
   if (!todo.length) { console.log(`INVALID no mutants selected${o.only ? ` (--only ${o.only})` : ""}`); return 1; }
   let bad = 0;
+  const notCaught = [];
   for (const m of todo) {
     const r = runMutant(o, m);
-    if (r.verdict !== "CAUGHT") bad++;
+    if (r.verdict !== "CAUGHT") { bad++; notCaught.push(m.id); }
     console.log(`${r.verdict} ${m.id} [${m.row}]: ${r.why}`);
   }
   if (o.only === undefined) for (const r of list.retired ?? []) console.log(`RETIRED ${r.id}: ${r.reason}`);
+  // Every non-CAUGHT id again on one line at the end, so a cut-off log still names them (B1 retro L3).
+  if (bad) console.log(`NOT CAUGHT: ${notCaught.join(" ")}`);
   console.log(`${todo.length - bad}/${todo.length} caught${bad ? `; ${bad} not caught -- run FAILS` : ""}`);
   return bad ? 1 : 0;
 }
