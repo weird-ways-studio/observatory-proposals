@@ -41,8 +41,8 @@ export type Bucket = Pick<R2Bucket, "get" | "put">;
 // Two pools of DAY_CAP / OP_DAY_CAP slots a UTC day (card 509a5d85): taps (Ben's grants) and run ops,
 // so run traffic can never take the room Ben's taps need. The state is additive over 43af20c: the tap
 // pool keeps its old names (`used`, `open`), the op pool and counters are new optional fields, and old
-// code ignores and keeps them (REFINE-observatory-ops.md v5 Y2, v6 Z6). B1 admits no op: `validate`
-// still refuses op and op_result, so the op pool stays empty until B2.
+// code ignores and keeps them (REFINE-observatory-ops.md v5 Y2, v6 Z6). B2 (card 8ff5110b) admits ops into
+// the op pool; old code would not know the run and op state, so after B2 the off switch replaces a revert.
 //
 // An open grant still holds `left` reserved slots for its later stages, whatever day they land on,
 // until `opened` + 24 h (inclusive); an op holds 1 for its result until `at` + 24 h. A hold that runs

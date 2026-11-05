@@ -42,7 +42,7 @@ it cannot detect a secret under an innocent name, so the front desk redacts (pha
 | 400 | outside the record format above (a fixed reason, never the writer's own text) |
 | 409 | approval or verdict with no recorded request; result with no recorded approval; wrong request hash or job; this stage already recorded with other content; an approval whose passkey answer fails the check below |
 | 410 | the grant's request is over 24 hours old |
-| 429 | today's 400 tap slots (UTC day) are taken, or the lifetime storage budget (6 GiB of stored envelopes) is full. A request takes 4 slots and reserves room in the budget for its grant's other three stages, so admitted grants can always finish; a reservation lasts 24 hours from the request's recorded time (inclusive) and is then released. Run ops will have their own 400-slot pool and stop at 5 GiB (card 509a5d85). A new day starts with the slots still reserved by grants opened the day before, never at zero, so no UTC day stores more than 400 records; a write held over midnight by an outage, however briefly, is charged to the day it is finally stored and carries that day's time. A full budget refuses every request until Ben decides. |
+| 429 | today's 400 tap slots (UTC day) are taken, or the lifetime storage budget (6 GiB of stored envelopes) is full. A request takes 4 slots and reserves room in the budget for its grant's other three stages, so admitted grants can always finish; a reservation lasts 24 hours from the request's recorded time (inclusive) and is then released. Run ops have their own 400-slot pool and stop at 5 GiB (card 509a5d85; "Run operations" below). A new day starts with the slots still reserved by grants opened the day before, never at zero, so no UTC day stores more than 400 records; a write held over midnight by an outage, however briefly, is charged to the day it is finally stored and carries that day's time. A full budget refuses every request until Ben decides. |
 
 **Approvals are checked against Ben's passkey (card 7190ab0a).** An `approval` is stored only if
 its `assertion` (`passkey_id`, `authenticator_data`, `client_data_json`, `signature`, base64url) was
@@ -122,25 +122,35 @@ stays listed; the lock, gap, unreadable-number, stray-outside-v1, day-cap and ba
 leave when a run that read everything no longer finds them. Nothing marks an incident seen. The light (`PING_URL_RECORDS`)
 says only that the run read what it should. Until Ben sets `PING_URL_RECORDS`, it only logs.
 
-## Run operations (card 1a272a5c; build A: checked, not yet accepted)
+## Run operations (card 1a272a5c; checker A, recorder B2 card 8ff5110b)
 
-A run is one Face ID tap that covers up to 50 read ops for up to 24 hours. Today the recorder still
-refuses `op` and `op_result` (400 "no valid stage"); build B makes it accept them. The hourly checker
-already reads them, so nothing changes in the checker when B arrives. Format and rules: `src/ops.ts`;
-the checker's chain: `src/runcheck.ts`.
+A run is one Face ID tap that covers up to 50 read ops for up to 24 hours. The recorder stores an op
+only when that run covers it, by the same rule the hourly checker uses (`uncovered()` in `src/ops.ts`), so
+the two read a run one way. Format and rules: `src/ops.ts`; the recorder: `src/recorder/ledger.ts`; the
+checker's chain: `src/runcheck.ts`. Additive to v1: tap records and their names are unchanged.
 
 - **Run open** is an ordinary grant with job `cf.run.open` and params exactly `{descriptor}`: canonical
   JSON (sorted keys, no spaces) of `{run, cards, jobs, account, zones, template, deadline, budget}`.
   Deadline is within 24 hours of the request's recorded time; budget is 1 to 50. Ben's passkey answer
-  covers exactly those bytes, through the grant hash.
+  covers exactly those bytes, through the grant hash. The recorder refuses (400) a run-open request
+  whose params are anything else or whose descriptor does not parse at its own recorded time.
 - **`op`** `{v, grant: <op id>, stage: "op", job, run_grant, run_request, run, card, template, params}`,
   stored as `records/v1/<number>.<op id>.op.json`. Params are exactly the job's (`zone` as a zone name,
   or `since`/`until`). It is *covered by Ben's passkey-approved run* only if its run-open request is at or
-  after `OPS_FROM` (unset in A, so nothing is covered yet), has an approval that passed the order check,
-  and the op is inside the descriptor, before the deadline and within the budget.
+  after `OPS_FROM`, has an approval that passed the order check, and the op is inside the descriptor,
+  before the deadline and within the budget. The recorder also needs the approval to have passed its own
+  passkey check, and the run-open request and approval each to have reached the bucket within 10 minutes
+  of their recorded time; otherwise 409 and nothing is stored. Its refusals: 409 (not covered), 429 (op
+  pool full, or the 5 GiB cutoff), 403 (run operations switched off).
 - **`op_result`** `{v, grant: <same op id>, stage: "op_result", job, run, op: <sha256 of the op body>,
   outcome, why | answer_sha256}`: outcome `done` carries the answer's hash; `refused`, `failed` and
-  `not_returned` carry one fixed `why` code. Never an answer body.
+  `not_returned` carry one fixed `why` code (`not_returned` adds `cbox_key_changed` and `run_changed`
+  in B2). Never an answer body. The recorder takes one result per op, naming its op's exact bytes, run
+  and job, within 24 hours of the op; the same bytes again get the same receipt.
+- **Late writes:** a run-open request, op or result held back by an outage is checked again at the time
+  it is finally stored; if it no longer passes it is withdrawn (410, nothing stored, no gap in the
+  numbers): "the run's deadline passed before the run was recorded", "the run ended before this op was
+  recorded", "this op's result is over 24 hours late". A record already in the bucket is never withdrawn.
 - **Hourly findings:** `op-uncovered`, `op-unlinked` (no such run or op, or a result naming other bytes),
   `op-late`, and `op-incomplete` (no valid result 24 hours after the op, raised only once a complete read
   has passed that time). A record stored over 10 minutes after its recorded time never covers or resolves.

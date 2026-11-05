@@ -1,8 +1,8 @@
 // Run operations (card 1a272a5c; refinement studio-os docs/specifications/trust-but-verify/
 // REFINE-observatory-ops.md, v4 sections win). One place for the op format, the run-open descriptor and
-// the coverage rules. Build A: only the hourly checker (src/runcheck.ts) uses this file, and the live
-// recorder still refuses `op` and `op_result` (contract.ts `validate` is unchanged). Build B's recorder
-// imports the same parser and rules, so both sides read a run one way.
+// the coverage rules. The hourly checker (src/runcheck.ts, build A) and the recorder (src/recorder/ledger.ts,
+// build B2 card 8ff5110b) both use this file, so both sides read a run one way. contract.ts `validate` still
+// knows only the four tap stages; the recorder sends op bodies here (validateOp) instead.
 import { GRANT, MAX_RECORD_BYTES, MAX_STORED_BYTES, ROOT, STAGE_SLOTS, type Stage } from "./contract.ts";
 import { canonical } from "./recorder/passkey.ts";
 
@@ -26,10 +26,12 @@ export const RESULT_WHY: Readonly<Record<string, readonly string[]>> = Object.fr
 });
 /**
  * The first record number whose run-open requests may cover ops (W5): records 1-3 hold approvals stored
- * before the passkey check. Set only by build B's PR, to the recorder's next number at merge (Ben merges
- * it). Undefined: no run covers anything, so any op is `op-uncovered`.
+ * before the passkey check. Set by build B2's PR (card 8ff5110b, REFINE v13 BB3e) to 39, the recorder's
+ * next number: the hourly checker's bookmark was record 38 at 04:30 UTC 2026-11-05 (its "seq" log field).
+ * Any value of 4 or more is safe for the recorder, which also needs its own passkey check (`checked`);
+ * no run-open request existed before B2. Undefined would mean no run covers anything.
  */
-export const OPS_FROM: number | undefined = undefined;
+export const OPS_FROM: number | undefined = 39;
 export const OP_DAY_CAP = 400; // the op pool's own slots a UTC day; taps keep contract DAY_CAP
 export const RUN_BUDGET_MAX = 50;
 export const RUN_MAX_MS = 24 * 3_600_000; // deadline at most this long after the run-open request
@@ -135,7 +137,9 @@ export interface RunSeen { seq: number; sha: string; descriptor: Descriptor | st
  * Why an op is not covered by Ben's passkey-approved run, or undefined when it is (V3, W5). `at` is the
  * op's recorded time; `run.ops` counts the unique ops already seen for the run, not this one.
  */
-export function uncovered(op: Op, run: RunSeen, at: number, opsFrom = OPS_FROM): string | undefined {
+// `opsFrom` has no default: a default would turn an explicit undefined ("not switched on") into OPS_FROM
+// once OPS_FROM is set (found setting it in B2). Callers pass OPS_FROM or their own reviewed value.
+export function uncovered(op: Op, run: RunSeen, at: number, opsFrom: number | undefined): string | undefined {
   if (opsFrom === undefined) return "run operations are not switched on yet";
   if (run.seq < opsFrom) return "its run was opened before run operations were switched on";
   if (!run.approved) return "its run has no approval that passed the checks";

@@ -241,8 +241,8 @@ async function sweep(bucket: Pick<R2Bucket, "list" | "get">, key: CryptoKey | un
 export type RecordsVerdict = "ran" | "unverified";
 
 /** One hour's run: read what is new, judge, alert once per new finding that is delivered, keep state, ping. `pin` null: no pin. */
-/** `opsFrom`: ops.ts OPS_FROM, a reviewed constant (never an env var); tests pass their own, as with `pin`. */
-export async function runRecords(env: RecordsEnv, fetchFn: (req: Request) => Promise<Response>, now: Date, pin: Pin | null = PIN ?? null, opsFrom: number | undefined = OPS_FROM) {
+/** `opsFrom`: ops.ts OPS_FROM, a reviewed constant (never an env var); tests pass their own, as with `pin`; null: unset. */
+export async function runRecords(env: RecordsEnv, fetchFn: (req: Request) => Promise<Response>, now: Date, pin: Pin | null = PIN ?? null, opsFrom: number | null = OPS_FROM ?? null) {
   let prev: State = {};
   try {
     const saved = await env.COPY.get(STATE_KEY);
@@ -402,7 +402,7 @@ export async function runRecords(env: RecordsEnv, fetchFn: (req: Request) => Pro
               // Op times are the signed recorded_at alone (W1); the op chain never touches the grant map.
               const t = Date.parse(r.env!.recorded_at);
               const job = (g: string) => (Object.hasOwn(open, g) ? open[g].job : undefined);
-              findings.push(...(stage === "op" ? await onOp(ops, next, r.record as unknown as Op, r.env!.sha256, t, job, opsFrom) : await onResult(ops, next, r.record as unknown as OpResult, t)));
+              findings.push(...(stage === "op" ? await onOp(ops, next, r.record as unknown as Op, r.env!.sha256, t, job, opsFrom ?? undefined) : await onResult(ops, next, r.record as unknown as OpResult, t)));
             } else {
               // Signed time, so tap reservation ages match the recorder (W1; Codex r1 #2).
               const f = checkOrder(open, grant, stage, r.job!, r.request, r.env!.sha256, Date.parse(r.env!.recorded_at), next, shown);

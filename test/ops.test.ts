@@ -51,7 +51,7 @@ async function world() {
   };
   const env = { RECORDS: b, COPY: copy } as unknown as RecordsEnv;
   // `opsFrom` null: OPS_FROM unset (a default parameter would swallow undefined).
-  const run = (t: number, opsFrom: number | null = 1) => runRecords(env, async () => new Response("", { status: 500 }), new Date(t), pin, opsFrom ?? undefined);
+  const run = (t: number, opsFrom: number | null = 1) => runRecords(env, async () => new Response("", { status: 500 }), new Date(t), pin, opsFrom);
   const incidents = () => (JSON.parse(copy.store.get(STATE_KEY)!.body).incidents as { id: string; text: string }[]);
   const ids = () => incidents().map((i) => i.id);
   return { b, copy, put, run, ids, incidents, skip: () => ++seq };
