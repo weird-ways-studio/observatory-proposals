@@ -112,12 +112,22 @@ test("W7/X3: op and op_result take exact fields; result codes are pinned per out
   for (const outcome of [["refused"], { toString: null }, 1, null]) assert.equal(validateOp(JSON.stringify({ v: 1, grant: OP, stage: "op_result", job: "cf.dns.list", run: RUN, op: "e".repeat(64), outcome, why: "budget_spent" })).ok, false, JSON.stringify(outcome));
 });
 
-test("row 19 (V1, V9a): the live recorder, unchanged, refuses op and op_result with 400", async () => {
-  const l = new Ledger(storage(), bucket() as never, STORE_BUDGET_BYTES, async () => undefined);
-  for (const body of [{ stage: "op", ...opRec("e".repeat(64)) }, { stage: "op_result", ...doneRec("e".repeat(64)) }]) {
-    assert.deepEqual(await l.accept(JSON.stringify({ v: 1, grant: OP, ...body })), { status: 400, why: "no valid stage" });
+test("Z8 (B2): not_returned takes cbox_key_changed and run_changed, and each such result clears its op for the checker", async () => {
+  for (const why of ["cbox_key_changed", "run_changed"]) {
+    assert.equal(validateOp(JSON.stringify({ v: 1, grant: OP, stage: "op_result", job: "cf.dns.list", run: RUN, op: "e".repeat(64), outcome: "not_returned", why })).ok, true, `not_returned/${why} refused`);
+    const w = await world();
+    const req = await openRun(w, NOW - 3 * HOUR);
+    const op = await w.put(OP, "op", opRec(req), NOW - 2 * HOUR);
+    await w.put(OP, "op_result", { job: "cf.dns.list", run: RUN, op: op.sha, outcome: "not_returned", why }, NOW - 2 * HOUR + MIN);
+    await w.run(NOW + DAY);
+    assert.deepEqual(has(w.ids(), "op-"), [], `the checker did not take a not_returned/${why} result`);
   }
-  assert.equal(OPS_FROM, undefined, "A ships with run ops switched off");
+});
+
+test("row 19 (V1, V9a), since B2 (card 8ff5110b): the recorder reads op bodies with validateOp, so a bad op is refused 400 with its words", async () => {
+  const l = new Ledger(storage(), bucket() as never, STORE_BUDGET_BYTES, async () => undefined, { opsFrom: 1 });
+  assert.deepEqual(await l.accept(JSON.stringify({ v: 1, grant: OP, stage: "op", ...opRec("e".repeat(64)), extra: 1 })), { status: 400, why: "op has the wrong fields" });
+  assert.deepEqual(await l.accept(JSON.stringify({ v: 1, grant: OP, stage: "op_result", ...doneRec("e".repeat(64)), outcome: "released" })), { status: 400, why: "no valid outcome" });
 });
 
 // ---- the chain, through the hourly run

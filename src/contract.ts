@@ -44,8 +44,9 @@ export interface WriterRecord { v: 1; grant: string; stage: Stage; job: string; 
  */
 // `tag`: set only for a record stored under a random-tagged name (card 6f681cc1), and signed with the
 // rest, so a signed envelope copied to another tagged name at its number does not verify there.
-export interface Envelope { v: 1 | 2; seq: number; grant: string; stage: Stage; recorded_at: string; sha256: string; body: string; tag?: string; sig?: string }
-export interface Receipt { v: 1; seq: number; key: string; grant: string; stage: Stage; sha256: string; recorded_at: string }
+// `stage` and `grant`: an op record (src/ops.ts, card 8ff5110b) carries its op stage and its op id here.
+export interface Envelope { v: 1 | 2; seq: number; grant: string; stage: Stage | "op" | "op_result"; recorded_at: string; sha256: string; body: string; tag?: string; sig?: string }
+export interface Receipt { v: 1; seq: number; key: string; grant: string; stage: Stage | "op" | "op_result"; sha256: string; recorded_at: string }
 
 /** The bytes the recorder signs: every envelope field but `sig`, in this fixed order. An untagged envelope has no `tag`, which JSON leaves out, so its bytes are as before tags. */
 export const sealed = (e: Envelope) => new TextEncoder().encode(JSON.stringify({ v: e.v, seq: e.seq, grant: e.grant, stage: e.stage, recorded_at: e.recorded_at, sha256: e.sha256, body: e.body, tag: e.tag }));

@@ -38,19 +38,31 @@ export function storage() {
 }
 
 // The records bucket in memory: get, head, list and put, with a switch to make the next puts fail.
+// R2 stamps each object with its upload time; here that is the envelope's `recorded_at` plus `lateBy`
+// (default 0), so a test can make a write land late (card 8ff5110b, CC2/DD1). Objects set directly in
+// `store` get the same time on read.
 export function bucket() {
-  const store = new Map<string, { body: string; sha?: string; raw?: Uint8Array }>();
-  let failPuts = 0;
+  const store = new Map<string, { body: string; sha?: string; raw?: Uint8Array; uploaded?: Date }>();
+  let failPuts = 0, delay = 0;
+  const stamp = (body: string) => {
+    try {
+      return new Date(Date.parse(JSON.parse(body).recorded_at) + delay);
+    } catch {
+      return new Date(NaN);
+    }
+  };
   return {
     store,
     failNext(n = 1) { failPuts = n; },
+    lateBy(ms: number) { delay = ms; },
     async head(k: string) { const v = store.get(k); return v ? ({ key: k, customMetadata: { sha256: v.sha } } as unknown as R2Object) : null; },
-    async get(k: string) { const v = store.get(k); return v ? ({ key: k, text: async () => v.body, arrayBuffer: async () => (v.raw ?? new TextEncoder().encode(v.body)).buffer } as unknown as R2ObjectBody) : null; },
+    async get(k: string) { const v = store.get(k); return v ? ({ key: k, uploaded: v.uploaded ?? stamp(v.body), text: async () => v.body, arrayBuffer: async () => (v.raw ?? new TextEncoder().encode(v.body)).buffer } as unknown as R2ObjectBody) : null; },
     async list(o: { prefix?: string; limit?: number }) { return { objects: [...store.keys()].sort().filter((k) => k.startsWith(o.prefix ?? "")).slice(0, o.limit ?? 1000).map((key) => ({ key })), truncated: false, delimitedPrefixes: [] } as unknown as R2Objects; },
     async put(k: string, body: string, o?: R2PutOptions) {
       if (failPuts > 0) { failPuts--; throw new Error("R2 down"); }
-      store.set(k, { body, sha: o?.customMetadata?.sha256 });
-      return {} as R2Object;
+      const uploaded = stamp(body);
+      store.set(k, { body, sha: o?.customMetadata?.sha256, uploaded });
+      return { key: k, uploaded } as R2Object;
     },
   };
 }

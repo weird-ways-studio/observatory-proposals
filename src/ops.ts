@@ -20,7 +20,9 @@ export const RESULT_WHY: Readonly<Record<string, readonly string[]>> = Object.fr
   done: [],
   refused: ["unknown_run", "no_run_key", "card_not_in_run", "job_not_in_run", "params_outside_run", "budget_spent", "run_ended", "run_stopped", "run_finished", "run_changed", "cbox_key_changed", "op_replayed", "not_signed", "bad_signature"],
   failed: ["provider_refused", "provider_timeout", "storage_before_call", "release_not_saved", "release_uncertain"],
-  not_returned: ["stopped", "finished", "ended"],
+  // B2 (REFINE v6 Z8): the vault's release reasons "c-box key changed" and "changed" (front-desk vault/src/runs.ts:202
+  // @6bcc466) as codes. Changed here, in the one list, so the checker and the recorder change together.
+  not_returned: ["stopped", "finished", "ended", "cbox_key_changed", "run_changed"],
 });
 /**
  * The first record number whose run-open requests may cover ops (W5): records 1-3 hold approvals stored
