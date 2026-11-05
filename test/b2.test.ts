@@ -500,3 +500,19 @@ test("status (BB3f, CC5-CC6): every refusal word at 0, the switch, OPS_FROM, run
   const { l: fresh } = runLedger({});
   assert.equal((await fresh.status(at(A))).ops.from, OPS_FROM ?? null, "status does not show the reviewed OPS_FROM");
 });
+
+test("V5: the largest valid op and op_result, tagged and re-timed, fit MAX_STORED_BYTES", async () => {
+  const id = "a".repeat(64), zone = `${"z".repeat(61)}.${"y".repeat(61)}.${"x".repeat(61)}.${"w".repeat(61)}.com`.slice(0, 253);
+  const biggest = [
+    opBody(id, "f".repeat(64), { run_grant: id, run: id, template: Number.MAX_SAFE_INTEGER, params: { zone } }),
+    opBody(id, "f".repeat(64), { run_grant: id, run: id, template: Number.MAX_SAFE_INTEGER, job: "cf.audit.read", params: { since: "2026-11-05T10:00:00Z", until: "2026-11-05T11:00:00Z" } }),
+    resBody(id, "f".repeat(64), { run: id, job: "cf.audit.read", outcome: "failed", why: "release_uncertain", answer_sha256: undefined }),
+    resBody(id, "f".repeat(64), { run: id, job: "cf.audit.read" }),
+  ];
+  for (const body of biggest) {
+    const env = { v: 2, seq: 999_999_999_999, grant: id, stage: JSON.parse(body).stage, recorded_at: "2026-11-05T10:00:00.000Z", sha256: "f".repeat(64), body, tag: "f".repeat(16), sig: "A".repeat(88) };
+    assert.ok(len(JSON.stringify(env)) <= MAX_STORED_BYTES, `an op envelope of ${len(JSON.stringify(env))} bytes exceeds MAX_STORED_BYTES`);
+  }
+  const { validateOp } = await import("../src/ops.ts");
+  assert.ok(biggest.every((b) => validateOp(b).ok), "the 'largest' bodies are not valid ops, so the bound proves nothing");
+});
