@@ -810,8 +810,8 @@
       "id": "b1-t13-boundary-exclusive",
       "row": "T13",
       "file": "src/recorder/ledger.ts",
-      "find": "if (o.left <= 0 || o.grant === keep || t - o.opened <= GRANT_TTL_MS) return true;",
-      "replace": "if (o.left <= 0 || o.grant === keep || t - o.opened < GRANT_TTL_MS) return true;",
+      "find": "if (o.left <= 0 || (keep?.pool === \"tap\" && o.grant === keep.id) || t - o.opened <= GRANT_TTL_MS) return true;",
+      "replace": "if (o.left <= 0 || (keep?.pool === \"tap\" && o.grant === keep.id) || t - o.opened < GRANT_TTL_MS) return true;",
       "why": "B1 (card 509a5d85): the hold ends before 24 h inclusive, unlike the checker's poolUse",
       "test": {
         "file": "test/accounting.test.ts",
@@ -823,8 +823,8 @@
       "id": "b1-expiry-only-at-rollover",
       "row": "V6.3",
       "file": "src/recorder/ledger.ts",
-      "find": "if (o.left <= 0 || o.grant === keep || t - o.opened <= GRANT_TTL_MS) return true;",
-      "replace": "if (o.left <= 0 || o.grant === keep || m.day === day(t) || t - o.opened <= GRANT_TTL_MS) return true;",
+      "find": "if (o.left <= 0 || (keep?.pool === \"tap\" && o.grant === keep.id) || t - o.opened <= GRANT_TTL_MS) return true;",
+      "replace": "if (o.left <= 0 || (keep?.pool === \"tap\" && o.grant === keep.id) || m.day === day(t) || t - o.opened <= GRANT_TTL_MS) return true;",
       "why": "B1 (card 509a5d85): tap holds expire only at a UTC rollover, never within the stored day (Codex B1 r1 #2: the real defect, not expiry removed)",
       "test": {
         "file": "test/accounting.test.ts",
@@ -836,7 +836,7 @@
       "id": "b1-z4-pending-hold-released",
       "row": "Z4",
       "file": "src/recorder/ledger.ts",
-      "find": "if (o.left <= 0 || o.grant === keep || t - o.opened <= GRANT_TTL_MS) return true;",
+      "find": "if (o.left <= 0 || (keep?.pool === \"tap\" && o.grant === keep.id) || t - o.opened <= GRANT_TTL_MS) return true;",
       "replace": "if (o.left <= 0 || t - o.opened <= GRANT_TTL_MS) return true;",
       "why": "B1 (card 509a5d85): status or accept expiry releases the hold of the record that is pending",
       "test": {
@@ -875,8 +875,8 @@
       "id": "b1-ae1-late-delete-outside",
       "row": "AE1",
       "file": "src/recorder/ledger.ts",
-      "find": "      await txn.delete(\"pending\");\n    });\n  }\n\n  /** The pending record under",
-      "replace": "    });\n    await this.storage.delete(\"pending\");\n  }\n\n  /** The pending record under",
+      "find": "      await txn.delete(\"pending\");\n    });\n  }\n\n  /**\n   * The B2 withdrawals",
+      "replace": "    });\n    await this.storage.delete(\"pending\");\n  }\n\n  /**\n   * The B2 withdrawals",
       "why": "B1 (card 509a5d85): the late withdrawal deletes pending outside its transaction",
       "test": {
         "file": "test/accounting.test.ts",
@@ -914,8 +914,8 @@
       "id": "b1-aa2-late-stage-stored",
       "row": "AA2",
       "file": "src/recorder/ledger.ts",
-      "find": "if (late && p.receipt.stage !== \"request\" && t - g.opened > GRANT_TTL_MS) {",
-      "replace": "if (late && p.receipt.stage !== \"request\" && t - g.opened > GRANT_TTL_MS * 2) {",
+      "find": "if (g && late && p.receipt.stage !== \"request\" && t - g.opened > GRANT_TTL_MS) {",
+      "replace": "if (g && late && p.receipt.stage !== \"request\" && t - g.opened > GRANT_TTL_MS * 2) {",
       "why": "B1 (card 509a5d85): a later stage re-timed past its grant's 24 h is stored instead of withdrawn",
       "test": {
         "file": "test/accounting.test.ts",
@@ -1044,8 +1044,8 @@
       "id": "b1-ae1-late-delete-dropped",
       "row": "AE1",
       "file": "src/recorder/ledger.ts",
-      "find": "      await txn.delete(\"pending\");\n    });\n  }\n\n  /** The pending record under",
-      "replace": "    });\n  }\n\n  /** The pending record under",
+      "find": "      await txn.delete(\"pending\");\n    });\n  }\n\n  /**\n   * The B2 withdrawals",
+      "replace": "    });\n  }\n\n  /**\n   * The B2 withdrawals",
       "why": "B1 (card 509a5d85): the late withdrawal never removes pending, so a later turn withdraws it again (Codex B1 r1 #3)",
       "test": {
         "file": "test/accounting.test.ts",
@@ -1078,6 +1078,396 @@
         "name": "AE1: unverified approval, a conflicting object planted at its name, a fault inside the withdrawal: nothing applied; then withdrawn once"
       },
       "expect": "a fault inside the withdrawal left part of it applied"
+    },
+    {
+      "id": "b2-r1-checked-ignored",
+      "row": "B2 row 1",
+      "file": "src/recorder/ledger.ts",
+      "find": "if (!run.stages.approval || run.checked !== true || run.late)",
+      "replace": "if (!run.stages.approval)",
+      "why": "B2: an op is covered by a run whose approval this recorder never passkey-checked (checked ignored)",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 1/row 17: an approval this recorder did not mark checked (pre-B2 shape) covers no op"
+      },
+      "expect": "a run whose approval was never checked here covered an op"
+    },
+    {
+      "id": "b2-r1-no-approval-needed",
+      "row": "B2 row 1",
+      "file": "src/recorder/ledger.ts",
+      "find": "if (!run.stages.approval || run.checked !== true || run.late)",
+      "replace": "if (false)",
+      "why": "B2: an op is admitted before its run's approval is stored",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 1 (Z7): an op is refused before its run's approval is stored, and the refusal is counted as uncovered"
+      },
+      "expect": "an op was stored with no approval for its run"
+    },
+    {
+      "id": "b2-r3-any-job-is-a-run",
+      "row": "B2 row 3",
+      "file": "src/recorder/ledger.ts",
+      "find": "if (!run || run.job !== RUN_OPEN_JOB || !run.stages.request",
+      "replace": "if (!run || !run.stages.request",
+      "why": "B2: a grant that is not a cf.run.open job is used as a run",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 3: the job check alone refuses a non-run grant that carries every run field"
+      },
+      "expect": "a non-run grant with run fields covered an op"
+    },
+    {
+      "id": "b2-r4-descriptor-not-parsed",
+      "row": "B2 row 4",
+      "file": "src/recorder/ledger.ts",
+      "find": "const descriptor = r.job === RUN_OPEN_JOB ? runDescriptor(r, t) : undefined;",
+      "replace": "const descriptor = r.job === RUN_OPEN_JOB ? (JSON.parse(String((r.params as { descriptor?: unknown }).descriptor)) as Descriptor) : undefined;",
+      "why": "B2: a run-open request is stored without the exact-params and parseDescriptor check",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "BB2.1/row 4: a run-open request is stored only with params exactly {descriptor}, valid at its own recorded time"
+      },
+      "expect": "an invalid run-open request was stored"
+    },
+    {
+      "id": "b2-r2-checked-outlives-withdrawal",
+      "row": "B2 row 2",
+      "file": "src/recorder/ledger.ts",
+      "find": "[`g:${p.receipt.grant}`]: { ...rest, stages },",
+      "replace": "[`g:${p.receipt.grant}`]: { ...g, stages },",
+      "why": "B2: an unverified approval is withdrawn but its run stays checked",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 2 (BB3a): checked is set with the approval and cleared with it; a fault inside the withdrawal leaves both"
+      },
+      "expect": "a withdrawn approval left its run checked"
+    },
+    {
+      "id": "b2-r2-checked-not-with-approval",
+      "row": "B2 row 2",
+      "file": "src/recorder/ledger.ts",
+      "find": "next = run && r.stage === \"approval\" ? { ...grant, checked: true } : grant;",
+      "replace": "next = grant;",
+      "why": "B2: checked is not written in the approval's own admission put",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 2 (BB3a): checked is set with the approval and cleared with it; a fault inside the withdrawal leaves both"
+      },
+      "expect": "checked was not written with the approval"
+    },
+    {
+      "id": "b2-r5-request-not-rechecked",
+      "row": "B2 row 5",
+      "file": "src/recorder/ledger.ts",
+      "find": "if (typeof d !== \"string\") return { descriptor: d };",
+      "replace": "if (typeof d !== \"string\" || late) return typeof d !== \"string\" ? { descriptor: d } : {};",
+      "why": "B2: a pending run-open request re-timed past its deadline is stored",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 5 (BB3d): a run-open request re-timed past its deadline is withdrawn whole (410), no number gap"
+      },
+      "expect": "the next record did not take the withdrawn request's number"
+    },
+    {
+      "id": "b2-r6-uncovered-skipped",
+      "row": "B2 row 6",
+      "file": "src/recorder/ledger.ts",
+      "find": "return uncovered(op, { seq: run.stages.request.seq",
+      "replace": "return void uncovered(op, { seq: run.stages.request.seq",
+      "why": "B2: admission skips uncovered(), so an op outside its run is stored",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 6: an op outside its run (card, job, zone, template, deadline) is refused with uncovered()'s words"
+      },
+      "expect": "an op outside its run was stored"
+    },
+    {
+      "id": "b2-r7-unit-not-taken",
+      "row": "B2 row 7",
+      "file": "src/recorder/ledger.ts",
+      "find": "entries[`g:${r.run_grant}`] = { ...run!, ops: (run!.ops ?? 0) + 1 };",
+      "replace": "entries[`g:${r.run_grant}`] = { ...run!, ops: (run!.ops ?? 0) + 0 };",
+      "why": "B2: an admitted op takes no unit of the run's budget",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 7: the run's budget counts unique ops; the last unit is taken, the next refused; a retry takes none"
+      },
+      "expect": "an op past the run's budget was stored"
+    },
+    {
+      "id": "b2-r7-recheck-counts-itself",
+      "row": "B2 row 7",
+      "file": "src/recorder/ledger.ts",
+      "find": "await this.storage.get<Grant>(`g:${o.run_grant}`), at, 1)) return {};",
+      "replace": "await this.storage.get<Grant>(`g:${o.run_grant}`), at, 0)) return {};",
+      "why": "B2: the re-time re-check counts the pending op against its own run's budget (Z7)",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "Z7: the last budget unit, re-timed inside its deadline, is stored (the re-check excludes the op itself)"
+      },
+      "expect": "the re-check counted the op itself"
+    },
+    {
+      "id": "b2-r7-withdrawn-op-keeps-unit",
+      "row": "B2 row 7",
+      "file": "src/recorder/ledger.ts",
+      "find": "ops: Math.max(0, (run.ops ?? 0) - 1) }",
+      "replace": "ops: run.ops ?? 0 }",
+      "why": "B2: a withdrawn op keeps its unit of the run's budget",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 11 (W1, W3 words): an op pending until after its run's deadline is withdrawn whole; the run keeps its budget"
+      },
+      "expect": "a withdrawn op kept its number, bytes, slots, hold or run unit"
+    },
+    {
+      "id": "b2-r8-op-pool-uncapped",
+      "row": "B2 row 8",
+      "file": "src/recorder/ledger.ts",
+      "find": "if ((meta.op_used ?? 0) + 2 > OP_DAY_CAP) return { status: 429",
+      "replace": "if (false) return { status: 429",
+      "why": "B2: an op is stored past a full op pool",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 8: a full op pool refuses the op (op_pool_full) and still takes Ben's tap"
+      },
+      "expect": "an op was stored past a full op pool"
+    },
+    {
+      "id": "b2-r8-cutoff-without-own-slots",
+      "row": "B2 row 8",
+      "file": "src/recorder/ledger.ts",
+      "find": "+ 2 * MAX_STORED_BYTES > Math.min(this.#cutoff, this.budget)",
+      "replace": "> Math.min(this.#cutoff, this.budget)",
+      "why": "B2: the 5 GiB cutoff leaves out the op's own two slots",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 8: past the cutoff (written + reserved + the op's two slots) ops stop; taps and results go on"
+      },
+      "expect": "an op was stored past the cutoff"
+    },
+    {
+      "id": "b2-r9-result-unlinked",
+      "row": "B2 row 9",
+      "file": "src/recorder/ledger.ts",
+      "find": "if (r.op !== o.sha || r.run !== o.run || r.job !== o.job)",
+      "replace": "if (r.run !== o.run || r.job !== o.job)",
+      "why": "B2: a result naming other op bytes is linked to the op",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 9: a result is linked by op hash, run and job, once, within 24 h of its op (inclusive)"
+      },
+      "expect": "a mismatched result was stored"
+    },
+    {
+      "id": "b2-r9-result-any-time",
+      "row": "B2 row 9",
+      "file": "src/recorder/ledger.ts",
+      "find": "if (o.state === \"released\" || t - o.at > RESULT_MS) return",
+      "replace": "if (o.state === \"released\") return",
+      "why": "B2: a result over 24 h after its op is stored",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 9: a result is linked by op hash, run and job, once, within 24 h of its op (inclusive)"
+      },
+      "expect": "a result over 24 h after its op was stored"
+    },
+    {
+      "id": "b2-r10-hold-kept-after-result-withdrawal",
+      "row": "B2 row 10",
+      "file": "src/recorder/ledger.ts",
+      "find": "op_open: (m.op_open ?? []).filter((h) => h.op !== p.receipt.grant), expired: { ...ex, op: ex.op + 1 } };",
+      "replace": "op_open: m.op_open ?? [], expired: { ...ex, op: ex.op + 1 } };",
+      "why": "B2: a late result's withdrawal leaves its op's hold in place (CC3)",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 10/12 (CC3): a result pending past its op's 24 h is withdrawn: released, hold gone, slot back, expired once; the op keeps its unit"
+      },
+      "expect": "the late result's withdrawal left the wrong op tuple"
+    },
+    {
+      "id": "b2-r11-op-not-rechecked",
+      "row": "B2 row 11",
+      "file": "src/recorder/ledger.ts",
+      "find": "if (op.ok && op.record.stage === \"op\" && !this.#notCovered(op.record, await this.storage.get<Grant>(`g:${o.run_grant}`), at, 1)) return {};",
+      "replace": "if (op.ok && op.record.stage === \"op\" && (late || !this.#notCovered(op.record, await this.storage.get<Grant>(`g:${o.run_grant}`), at, 1))) return {};",
+      "why": "B2: an op re-timed past its run's deadline is stored, not withdrawn (W1)",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 11 (W1, W3 words): an op pending until after its run's deadline is withdrawn whole; the run keeps its budget"
+      },
+      "expect": "an op re-timed past its run's deadline was stored"
+    },
+    {
+      "id": "b2-r12-state-outside-txn",
+      "row": "B2 row 12",
+      "file": "src/recorder/ledger.ts",
+      "find": "const m = await change(settle((await txn.get<Meta>(\"meta\"))!, now, keepOf(p)), txn);",
+      "replace": "const m = await change(settle((await txn.get<Meta>(\"meta\"))!, now, keepOf(p)), this.storage);",
+      "why": "B2: an op withdrawal's state change lands outside its transaction (AE1)",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 12 (CC3, AE1): a fault inside the op withdrawal changes nothing; the next turn withdraws once"
+      },
+      "expect": "a fault inside the op withdrawal changed state"
+    },
+    {
+      "id": "b2-r13-op-state-under-g",
+      "row": "B2 row 13",
+      "file": "src/recorder/ledger.ts",
+      "find": "entries[ok] = r.stage === \"op\" ?",
+      "replace": "entries[`g:${r.grant}`] = r.stage === \"op\" ?",
+      "why": "B2: op state is written under the grant prefix, over a grant with the same id",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 13: an op id equal to a grant id lives apart from the grant"
+      },
+      "expect": "an op wrote over a grant with the same id"
+    },
+    {
+      "id": "b2-r14-retag-receipt-not-moved",
+      "row": "B2 row 14",
+      "file": "src/recorder/ledger.ts",
+      "find": "return [k, p.receipt.stage === \"op\" ? { ...o, receipt } : { ...o, result: receipt }];",
+      "replace": "return [k, o];",
+      "why": "B2: a retagged op record's receipt in o: keeps the planted name",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 14 (BB3c): a pending op whose name is planted is retagged under o:, not g:"
+      },
+      "expect": "a retagged op record kept its planted name in o:"
+    },
+    {
+      "id": "b2-r15-op-hold-not-moved",
+      "row": "B2 row 15",
+      "file": "src/recorder/ledger.ts",
+      "find": "? { ...m, op_open: m.op_open!.map((h) => (h.op === receipt.grant ? { ...h, at: t } : h)) }",
+      "replace": "? m",
+      "why": "B2: a re-timed op's result hold keeps the old start (AA2)",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 15/AA2: an op pending over midnight is charged to the new day's op pool, its time and hold move with it"
+      },
+      "expect": "a pending op over midnight was charged or timed wrong"
+    },
+    {
+      "id": "b2-r16-switch-ignored",
+      "row": "B2 row 16",
+      "file": "src/recorder/ledger.ts",
+      "find": "if (!this.#opsEnabled) return",
+      "replace": "if (false) return",
+      "why": "B2: the off switch does not stop new ops",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 16 (V2): switched off, new ops are refused (403) while results, a pending result, holds and taps go on"
+      },
+      "expect": "an op was stored with the switch off"
+    },
+    {
+      "id": "b2-r18-op-charged-to-tap",
+      "row": "B2 row 18",
+      "file": "src/recorder/ledger.ts",
+      "find": "meta = { ...meta, op_used: (meta.op_used ?? 0) + 2, op_open:",
+      "replace": "meta = { ...meta, used: meta.used + 2, op_used: meta.op_used ?? 0, op_open:",
+      "why": "B2: an op is charged to the tap pool (cross-pool charge, DD3)",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "row 18/DD3 (AB1 with ops): recorder pools equal the checker's poolUse from records, per pool; a pending op is +2 slots"
+      },
+      "expect": "recorder pools differ from the checker's per-pool count"
+    },
+    {
+      "id": "b2-cc1-tap-keep-by-bare-id",
+      "row": "B2 CC1",
+      "file": "src/recorder/ledger.ts",
+      "find": "(keep?.pool === \"tap\" && o.grant === keep.id)",
+      "replace": "(o.grant === keep?.id)",
+      "why": "B2: a pending op keeps a tap hold with the same id from expiring",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "CC1: a tap grant and an op with the same id: the tap hold expires while the op is pending, and the reverse"
+      },
+      "expect": "a pending op kept a tap hold of the same id from expiring"
+    },
+    {
+      "id": "b2-cc1-op-keep-by-bare-id",
+      "row": "B2 CC1",
+      "file": "src/recorder/ledger.ts",
+      "find": "(keep?.pool === \"op\" && o.op === keep.id)",
+      "replace": "(o.op === keep?.id)",
+      "why": "B2: a pending tap request keeps an op hold with the same id from expiring",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "CC1: a tap grant and an op with the same id: the tap hold expires while the op is pending, and the reverse"
+      },
+      "expect": "a pending tap request kept an op hold of the same id from expiring"
+    },
+    {
+      "id": "b2-cc2-upload-time-ignored",
+      "row": "B2 CC2",
+      "file": "src/recorder/ledger.ts",
+      "find": "if (!run || !off) {",
+      "replace": "if (true) {",
+      "why": "B2: a run-open approval stored over 10 min late still covers ops",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "CC2: an approval whose object lands 11 min after its recorded time is stored but covers no op; 9 min covers"
+      },
+      "expect": "an approval stored 11 min late: wrong coverage"
+    },
+    {
+      "id": "b2-dd1-late-request-approved",
+      "row": "B2 DD1",
+      "file": "src/recorder/ledger.ts",
+      "find": "if (run && grant.late) return",
+      "replace": "if (false) return",
+      "why": "B2: an approval is taken over a run-open request stored late",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "DD1: a run-open request whose object lands 11 min late marks the run late: its approval is refused, no op stored"
+      },
+      "expect": "an approval covered a run-open request stored late"
+    },
+    {
+      "id": "b2-cc4-unparsed-request-approved",
+      "row": "B2 CC4",
+      "file": "src/recorder/ledger.ts",
+      "find": "if (run && !grant.descriptor) return",
+      "replace": "if (false) return",
+      "why": "B2: an approval is taken over a run-open request this recorder never parsed",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "CC4: an inherited run-open request already in the bucket is kept, but its approval and ops are refused"
+      },
+      "expect": "an approval covered a request this recorder never parsed"
+    },
+    {
+      "id": "b2-cc5-runs-not-counted",
+      "row": "B2 CC5",
+      "file": "src/recorder/ledger.ts",
+      "find": "counters = { ...counters, runs: (counters.runs ?? 0) + 1 };",
+      "replace": "counters = { ...counters, runs: counters.runs ?? 0 };",
+      "why": "B2: admitted run-open requests are not counted, so the revert boundary is invisible",
+      "test": {
+        "file": "test/b2.test.ts",
+        "name": "BB2.1/row 4: a run-open request is stored only with params exactly {descriptor}, valid at its own recorded time"
+      },
+      "expect": "an admitted run-open request was not counted"
+    },
+    {
+      "id": "b2-z8-codes-missing",
+      "row": "B2 Z8",
+      "file": "src/ops.ts",
+      "find": "not_returned: [\"stopped\", \"finished\", \"ended\", \"cbox_key_changed\", \"run_changed\"],",
+      "replace": "not_returned: [\"stopped\", \"finished\", \"ended\"],",
+      "why": "B2: the vault's not_returned codes cbox_key_changed and run_changed are refused",
+      "test": {
+        "file": "test/ops.test.ts",
+        "name": "Z8 (B2): not_returned takes cbox_key_changed and run_changed, and each such result clears its op for the checker"
+      },
+      "expect": "not_returned/cbox_key_changed refused"
     }
   ],
   "retired": []

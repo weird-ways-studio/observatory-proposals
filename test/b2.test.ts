@@ -48,7 +48,7 @@ test("BB2.1/row 4: a run-open request is stored only with params exactly {descri
   assert.equal(meta(st), undefined, "a refused run-open request touched the ledger");
   await openRun(l, A, { approve: false });
   assert.deepEqual([typeof run(st)!.descriptor, run(st)!.ops], ["object", 0]);
-  assert.equal((await l.status(at(A + MIN))).ops.runs_admitted, 1);
+  assert.equal((await l.status(at(A + MIN))).ops.runs_admitted, 1, "an admitted run-open request was not counted (CC5 revert boundary)");
 });
 
 test("row 3: an approved ordinary grant (test.echo) is not a run: an op naming it is refused", async () => {
@@ -58,6 +58,13 @@ test("row 3: an approved ordinary grant (test.echo) is not a run: an op naming i
   await l.accept(JSON.stringify({ v: 1, grant: "echo-grant-01", stage: "approval", job: "test.echo", request: await sha256(body) }), at(A + MIN));
   const out = await l.accept(opBody("op-0000000001", await sha256(body), { run_grant: "echo-grant-01" }), at(A + 2 * MIN));
   assert.deepEqual(out, { status: 409, why: "it names no run-open request this recorder checked", reason: "uncovered" }, "an op was covered by a non-run grant");
+});
+
+test("row 3: the job check alone refuses a non-run grant that carries every run field", async () => {
+  const { l, st } = runLedger();
+  const req = await openRun(l, A);
+  st.m.set("g:echo-grant-31", { ...run(st)!, job: "test.echo" });
+  assert.deepEqual(await l.accept(opBody("op-0000000001", req, { run_grant: "echo-grant-31" }), at(A + 2 * MIN)), { status: 409, why: "it names no run-open request this recorder checked", reason: "uncovered" }, "a non-run grant with run fields covered an op");
 });
 
 // ---- BB2.2, rows 1, 6, 17: coverage ----
@@ -139,8 +146,9 @@ test("row 13: an op id equal to a grant id lives apart from the grant", async ()
   const req = await openRun(l, A);
   await l.accept(tap("shared-id-01"), at(A + 2 * MIN));
   const before = structuredClone(st.m.get("g:shared-id-01"));
-  await storeOp(l, "shared-id-01", req, A + 3 * MIN);
+  const out = await l.accept(opBody("shared-id-01", req), at(A + 3 * MIN));
   assert.deepEqual(st.m.get("g:shared-id-01"), before, "an op wrote over a grant with the same id");
+  assert.equal(out.status, 201);
   assert.equal(opOf(st, "shared-id-01")!.state, "open");
 });
 
@@ -279,7 +287,7 @@ test("row 11 (W1, W3 words): an op pending until after its run's deadline is wit
   assert.equal((await l.accept(opBody("op-0000000002", req), at(A + 4 * HOUR - MIN))).status, 503);
   assert.deepEqual([meta(st).op_used, run(st)!.ops], [4, 2]);
   // Recovered 11 min later (past the 5 min re-time line): re-checked at its new time, it is outside its run.
-  assert.deepEqual(await l.accept(opBody("op-0000000002", req), at(A + 4 * HOUR + 10 * MIN)), { status: 409, why: "it was recorded after the run's deadline", reason: "uncovered" });
+  assert.deepEqual(await l.accept(opBody("op-0000000002", req), at(A + 4 * HOUR + 10 * MIN)), { status: 409, why: "it was recorded after the run's deadline", reason: "uncovered" }, "an op re-timed past its run's deadline was stored");
   assert.deepEqual(totals(st), before, "a withdrawn op kept its number, bytes, slots, hold or run unit");
   assert.equal(opOf(st, "op-0000000002"), undefined);
 });
@@ -290,6 +298,7 @@ test("Z7: the last budget unit, re-timed inside its deadline, is stored (the re-
   b.failNext(1);
   assert.equal((await l.accept(opBody("op-0000000001", req), at(A + 10 * MIN))).status, 503);
   assert.equal((await l.accept(tap("echo-grant-13"), at(A + 30 * MIN))).status, 201);
+  assert.ok(opOf(st, "op-0000000001"), "a re-timed op on the run's last unit was withdrawn (the re-check counted the op itself)");
   const o = opOf(st, "op-0000000001")!;
   assert.deepEqual([o.receipt.recorded_at, o.at, hold(st, "op-0000000001")?.at, run(st)!.ops], [iso(A + 30 * MIN), A + 30 * MIN, A + 30 * MIN, 1], "a re-timed op was withdrawn as over budget, or did not move its time and hold");
 });
